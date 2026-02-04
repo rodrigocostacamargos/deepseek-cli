@@ -1,11 +1,13 @@
-import * as readline from 'readline';
+import * as readline from 'node:readline';
+import { stdin as input, stdout as output } from 'node:process';
 import chalk from 'chalk';
 import ora from 'ora';
-import { DeepSeekAPI } from '../api';
+import { DeepSeekAPI, Message } from '../api';
 import { Config } from '../config';
 
-export async function interactiveCommand(config: Config): Promise<void> {
-  const api = new DeepSeekAPI(config);
+export async function interactiveCommand(config: Config, injectedApi?: DeepSeekAPI): Promise<void> {
+  const api = injectedApi || new DeepSeekAPI(config);
+  const history: Message[] = [];
   
   // Check Ollama connection if using local mode
   if (config.useLocal) {
@@ -26,43 +28,51 @@ export async function interactiveCommand(config: Config): Promise<void> {
     }
   }
   
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-    prompt: chalk.green('deepseek-cli > ')
-  });
+  const rl = readline.createInterface({ input, output });
 
-  rl.on('line', async (input) => {
-    const trimmed = input.trim();
-    
-    if (trimmed.toLowerCase() === 'exit') {
-      console.log(chalk.yellow('\nGoodbye! 👋'));
-      rl.close();
-      process.exit(0);
-    }
+  const ask = (query: string): Promise<string> => {
+    return new Promise((resolve) => rl.question(query, resolve));
+  };
 
-    if (trimmed) {
-      const spinner = ora('Thinking...').start();
+  try {
+    while (true) {
+      const userInput = await ask(chalk.green('deepseek-cli > '));
       
-      try {
-        const response = await api.complete(trimmed);
-        spinner.stop();
-        console.log('\n' + formatResponse(response) + '\n');
-      } catch (error) {
-        spinner.stop();
-        console.error(chalk.red('Error:'), error instanceof Error ? error.message : error);
+      if (userInput === null || userInput === undefined) break;
+
+      const trimmed = userInput.trim();
+      
+      if (trimmed.toLowerCase() === 'exit' || trimmed.toLowerCase() === 'quit') {
+        console.log(chalk.yellow('\nGoodbye! 👋'));
+        break;
+      }
+
+      if (trimmed) {
+        const spinner = ora('Thinking...').start();
+        
+        try {
+          history.push({ role: 'user', content: trimmed });
+          
+          const MAX_HISTORY = 20;
+          if (history.length > MAX_HISTORY) {
+            history.splice(0, history.length - MAX_HISTORY);
+          }
+
+          const response = await api.complete(history);
+          history.push({ role: 'assistant', content: response });
+          
+          spinner.stop();
+          console.log('\n' + formatResponse(response) + '\n');
+        } catch (error) {
+          spinner.stop();
+          history.pop();
+          console.error(chalk.red('Error:'), error instanceof Error ? error.message : error);
+        }
       }
     }
-    
-    rl.prompt();
-  });
-
-  rl.on('close', () => {
-    console.log(chalk.yellow('\nGoodbye! 👋'));
-    process.exit(0);
-  });
-
-  rl.prompt();
+  } finally {
+    rl.close();
+  }
 }
 
 function formatResponse(response: string): string {

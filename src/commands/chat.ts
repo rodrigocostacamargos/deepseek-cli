@@ -8,7 +8,7 @@ export async function chatCommand(prompt: string, config: Config): Promise<void>
   
   try {
     const api = new DeepSeekAPI(config);
-    const response = await api.complete(prompt);
+    const response = await api.complete([{ role: 'user', content: prompt }]);
     
     spinner.stop();
     console.log('\n' + formatResponse(response) + '\n');

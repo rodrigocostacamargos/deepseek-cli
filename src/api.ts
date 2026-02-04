@@ -1,18 +1,23 @@
 import axios from 'axios';
 import { Config } from './config';
 
+export interface Message {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
 export class DeepSeekAPI {
   constructor(private config: Config) {}
 
-  async complete(prompt: string): Promise<string> {
+  async complete(messages: Message[]): Promise<string> {
     if (this.config.useLocal) {
-      return this.completeWithOllama(prompt);
+      return this.completeWithOllama(messages);
     } else {
-      return this.completeWithCloud(prompt);
+      return this.completeWithCloud(messages);
     }
   }
 
-  private async completeWithOllama(prompt: string): Promise<string> {
+  private async completeWithOllama(messages: Message[]): Promise<string> {
     try {
       const response = await axios.post(
         this.config.apiUrl,
@@ -21,12 +26,9 @@ export class DeepSeekAPI {
           messages: [
             {
               role: 'system',
-              content: 'You are DeepSeek Coder, an AI programming assistant. Help with coding tasks, provide clear code examples, and follow best practices.'
+              content: 'You are DeepSeek CLI, an expert AI engineering assistant. Be concise, idiomatic, and focus on software engineering best practices. Avoid pleasantries and go straight to the solution.'
             },
-            {
-              role: 'user',
-              content: prompt
-            }
+            ...messages
           ],
           stream: false,
           options: {
@@ -61,7 +63,7 @@ export class DeepSeekAPI {
     }
   }
 
-  private async completeWithCloud(prompt: string): Promise<string> {
+  private async completeWithCloud(messages: Message[]): Promise<string> {
     try {
       const response = await axios.post(
         this.config.apiUrl,
@@ -70,12 +72,9 @@ export class DeepSeekAPI {
           messages: [
             {
               role: 'system',
-              content: 'You are DeepSeek Coder, an AI programming assistant. Help with coding tasks, provide clear code examples, and follow best practices.'
+              content: 'You are DeepSeek CLI, an expert AI engineering assistant. Be concise, idiomatic, and focus on software engineering best practices. Avoid pleasantries and go straight to the solution.'
             },
-            {
-              role: 'user',
-              content: prompt
-            }
+            ...messages
           ],
           temperature: 0.1,
           max_tokens: 4096

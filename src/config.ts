@@ -7,11 +7,15 @@ export interface Config {
 }
 
 export function getConfig(): Config {
-  const useLocal = process.env.DEEPSEEK_USE_LOCAL === 'true' || !process.env.DEEPSEEK_API_KEY;
+  const hasApiKey = !!process.env.DEEPSEEK_API_KEY;
+  const useLocal = process.env.DEEPSEEK_USE_LOCAL === 'true' || (!hasApiKey && process.env.DEEPSEEK_USE_LOCAL !== 'false');
+  
+  // Default model depends on mode
+  const defaultModel = useLocal ? 'deepseek-coder:6.7b' : 'deepseek-chat';
   
   return {
     apiKey: process.env.DEEPSEEK_API_KEY || '',
-    model: process.env.DEEPSEEK_MODEL || 'deepseek-coder:6.7b',
+    model: process.env.DEEPSEEK_MODEL || defaultModel,
     apiUrl: useLocal 
       ? `${process.env.OLLAMA_HOST || 'http://localhost:11434'}/api/chat`
       : 'https://api.deepseek.com/chat/completions',
