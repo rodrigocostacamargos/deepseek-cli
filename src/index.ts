@@ -10,7 +10,12 @@ async function main() {
   try {
     const cli = new CLI();
     await cli.run();
-  } catch (error) {
+  } catch (error: any) {
+    // Commander throws an error when it wants to exit (e.g., after displaying help or version)
+    if (error.code === 'commander.helpDisplayed' || error.code === 'commander.version') {
+      process.exit(0);
+    }
+    
     console.error(chalk.red('Error:'), error instanceof Error ? error.message : error);
     process.exit(1);
   }
