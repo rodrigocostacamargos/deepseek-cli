@@ -4,10 +4,26 @@ import chalk from 'chalk';
 import ora from 'ora';
 import { DeepSeekAPI, Message } from '../api';
 import { Config } from '../config';
+import { extractFilePaths, readFileContent } from '../utils/files';
+import { getProjectMap } from '../utils/project';
 
 export async function interactiveCommand(config: Config, injectedApi?: DeepSeekAPI): Promise<void> {
   const api = injectedApi || new DeepSeekAPI(config);
   const history: Message[] = [];
+  
+  // Start the project scan in the background
+  const projectMapPromise = getProjectMap(process.cwd());
+  
+  console.log(chalk.cyan('🔍 Scanning project structure...'));
+  const projectMap = await projectMapPromise;
+  
+  // Add project context to the very beginning of the history
+  history.push({ 
+    role: 'system', 
+    content: `Project structure:\n${projectMap}\nUser can reference files using @path/to/file.` 
+  });
+
+  console.log(chalk.green('✅ Project mapped. ') + chalk.gray('Use @filename to include file content.\n'));
   
   // Check Ollama connection if using local mode
   if (config.useLocal) {
@@ -30,15 +46,34 @@ export async function interactiveCommand(config: Config, injectedApi?: DeepSeekA
   
   const rl = readline.createInterface({ input, output });
 
+  // Keep the process alive explicitly
+  process.stdin.resume();
+
+  // Handle sudden stream closures
+  rl.on('close', () => {
+    // If we're not exiting voluntarily, something else closed us
+    // but in a while(true) loop, we'll just let it break naturally.
+  });
+
   const ask = (query: string): Promise<string> => {
-    return new Promise((resolve) => rl.question(query, resolve));
+    return new Promise((resolve) => {
+      rl.question(query, (answer) => {
+        resolve(answer);
+      });
+    });
   };
 
   try {
     while (true) {
-      const userInput = await ask(chalk.green('deepseek-cli > '));
+      let userInput: string;
+      try {
+        userInput = await ask(chalk.green('deepseek-cli > '));
+      } catch (e) {
+        // Se a pergunta falhar (ex: Ctrl+D), saímos do loop
+        break;
+      }
       
-      if (userInput === null || userInput === undefined) break;
+      if (userInput === undefined || userInput === null) continue;
 
       const trimmed = userInput.trim();
       
@@ -48,10 +83,34 @@ export async function interactiveCommand(config: Config, injectedApi?: DeepSeekA
       }
 
       if (trimmed) {
-        const spinner = ora('Thinking...').start();
+        const filePaths = extractFilePaths(trimmed);
+        let enhancedPrompt = trimmed;
+
+        if (filePaths.length > 0) {
+          process.stdout.write(chalk.cyan('📖 Reading files... '));
+          let filesContent = '';
+          
+          for (const filePath of filePaths) {
+            const content = await readFileContent(filePath);
+            if (content) {
+              filesContent += content + '\n';
+            } else {
+              console.log(chalk.yellow(`\n⚠️  Could not read file: ${filePath}`));
+            }
+          }
+          
+          if (filesContent) {
+            enhancedPrompt = `Context files:\n${filesContent}\nUser request: ${trimmed}`;
+            process.stdout.write(chalk.green('Done.\n'));
+          } else {
+            process.stdout.write(chalk.yellow('Failed.\n'));
+          }
+        }
+
+        console.log(chalk.gray('Thinking...'));
         
         try {
-          history.push({ role: 'user', content: trimmed });
+          history.push({ role: 'user', content: enhancedPrompt });
           
           const MAX_HISTORY = 20;
           if (history.length > MAX_HISTORY) {
@@ -61,10 +120,8 @@ export async function interactiveCommand(config: Config, injectedApi?: DeepSeekA
           const response = await api.complete(history);
           history.push({ role: 'assistant', content: response });
           
-          spinner.stop();
           console.log('\n' + formatResponse(response) + '\n');
         } catch (error) {
-          spinner.stop();
           history.pop();
           console.error(chalk.red('Error:'), error instanceof Error ? error.message : error);
         }
