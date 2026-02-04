@@ -17,6 +17,65 @@ export class DeepSeekAPI {
     }
   }
 
+  async completeCode(prefix: string, suffix: string): Promise<string> {
+    if (this.config.useLocal) {
+      return this.fimWithOllama(prefix, suffix);
+    } else {
+      return this.fimWithCloud(prefix, suffix);
+    }
+  }
+
+  private async fimWithOllama(prefix: string, suffix: string): Promise<string> {
+    try {
+      const response = await axios.post(
+        `${this.config.ollamaHost}/api/generate`,
+        {
+          model: this.config.model,
+          prompt: `<｜fim begin｜>${prefix}<｜fim hole｜>${suffix}<｜fim end｜>`,
+          stream: false,
+          options: {
+            temperature: 0,
+            stop: ['<｜fim begin｜>', '<｜fim hole｜>', '<｜fim end｜>', 'process.exit']
+          }
+        }
+      );
+      return response.data.response;
+    } catch (error: any) {
+      throw new Error(`Ollama FIM error: ${error.message}`);
+    }
+  }
+
+  private async fimWithCloud(prefix: string, suffix: string): Promise<string> {
+    try {
+      const response = await axios.post(
+        this.config.apiUrl,
+        {
+          model: this.config.model,
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a code completion helper. You will be given a code prefix and suffix. Your task is to provide ONLY the code that goes in between. Do not explain anything. Do not include triple backticks unless they are part of the code.'
+            },
+            {
+              role: 'user',
+              content: `PREFIX:\n${prefix}\n\nSUFFIX:\n${suffix}\n\nProvide the missing code that connects the prefix and suffix.`
+            }
+          ],
+          temperature: 0
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${this.config.apiKey}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      return response.data.choices[0].message.content;
+    } catch (error: any) {
+      throw new Error(`Cloud FIM error: ${error.message}`);
+    }
+  }
+
   private async completeWithOllama(messages: Message[]): Promise<string> {
     try {
       const response = await axios.post(

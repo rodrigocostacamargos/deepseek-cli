@@ -4,6 +4,7 @@ import { getConfig } from './config';
 import { chatCommand } from './commands/chat';
 import { interactiveCommand } from './commands/interactive';
 import { setupCommand } from './commands/setup';
+import { completeCommand } from './commands/complete';
 
 export class CLI {
   private program: Command;
@@ -40,6 +41,15 @@ export class CLI {
       .action(async () => {
         const config = this.buildConfig(this.program.opts());
         await setupCommand(config);
+      });
+
+    // Complete command for FIM (Fill-In-The-Middle)
+    this.program
+      .command('complete <file>')
+      .description('Fill the <FILL> marker in a file with generated code')
+      .action(async (file) => {
+        const config = this.buildConfig(this.program.opts());
+        await completeCommand(file, config);
       });
 
     // Default action (interactive mode)
